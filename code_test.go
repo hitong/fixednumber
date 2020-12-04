@@ -11,7 +11,9 @@ func TestFixed54_10_Add(t *testing.T) {
 		t.Fail()
 	}
 
+
 	if fixed.Del(fixed) != Float64ToFixed54_10(in - in){
 		t.Fail()
 	}
+
 }
