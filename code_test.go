@@ -2,8 +2,14 @@ package fixed
 
 import (
 	"fmt"
+	"math"
+	"math/rand"
 	"testing"
 )
+
+func TestUint64Bits(t *testing.T) {
+	fmt.Println(Uint64Bits(math.Float64bits(rand.Float64())))
+}
 
 func TestFixed64_Add(t *testing.T) {
 	Float64ToFixed64(-1.0).Add(Float64ToFixed64(1))
