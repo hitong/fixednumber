@@ -36,7 +36,7 @@ func Float64ToFixed64(value float64) Fixed64 {
 	realE := int64(e>>shift64E) - bias64 //todo 限制范围位 [-PrecisionBitsNum - 1,+52]
 	fixedD := uint64(0)
 	var result uint64
-	fixedP := uint64(0)
+	var fixedP uint64 = 0
 	//todo 定点数溢出, Panic?,Error?
 	if realE >= 0 {
 		fixedD = m >> (SizeM - realE) << PrecisionBitsNum
