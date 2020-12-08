@@ -40,9 +40,9 @@ func Float64ToFixed64(value float64) Fixed64 {
 	//todo 定点数溢出, Panic?,Error?
 	if realE >= 0 {
 		fixedD = m >> (SizeM - realE) << PrecisionBitsNum
-		fixedP = ((1<<PrecisionBitsNum - 1) << (52 - realE - PrecisionBitsNum) & m) >> (52 - realE - PrecisionBitsNum)
+		fixedP = ((1<<PrecisionBitsNum - 1) << (SizeM - realE - PrecisionBitsNum) & m) >> (SizeM - realE - PrecisionBitsNum)
 	} else {
-		fixedP = m >> (realE * -1) >> (52 - PrecisionBitsNum)
+		fixedP = m >> (realE * -1) >> (SizeM - PrecisionBitsNum)
 	}
 
 	result |= s
@@ -89,15 +89,12 @@ func (fixed Fixed64) Div(oth Fixed64) Fixed64 {
 	var oS = oth & mask64S
 	fixed &^= mask64S
 	oth &^= mask64S
-//	fmt.Println(Uint64Bits(uint64(fixed)))
-//	fmt.Println(Uint64Bits(uint64(oth)))
-	hi, _ := bits.Div64(uint64(fixed>>(64-PrecisionBitsNum)), uint64(fixed<<PrecisionBitsNum), uint64(oth))
-	//fmt.Println(Uint64Bits(hi))
+
+	quo, _ := bits.Div64(uint64(fixed>>(64-PrecisionBitsNum)), uint64(fixed<<PrecisionBitsNum), uint64(oth))
 	//lo >>= PrecisionBitsNum //todo 舍入规则定义
 	//hi = (hi & DecimalBitsMask) << (64 - PrecisionBitsNum)
 
-	//return (fS ^ oS) | (((fixed << 1 << PrecisionBitsNum) / oth) >> 1)
-	return Fixed64(uint64(fS^oS) | hi)
+	return Fixed64(uint64(fS^oS) | quo)
 }
 
 func (fixed Fixed64) String() string {

@@ -43,9 +43,9 @@ func TestFixed64(t *testing.T){
 	//fmt.Println(fmt.Sprintf("%.3f",Fixed64ToFloat64(Float64ToFixed64(45687.2456))))
 	fmt.Println(fmt.Sprintf("%.3f",Fixed64ToFloat64(Float64ToFixed64(489.15641).Mul(Float64ToFixed64(3.64)))))
 
-	fmt.Println(Float64ToFixed64(0.14564))
+	fmt.Println(Float64ToFixed64(0.14564).Sub(Float64ToFixed64(0.14564)))
 	fmt.Println(Float64ToFixed64(0.14564).Mul(Float64ToFixed64(0.14564)))
-	fmt.Println(Float64ToFixed64(45687.2456).Mul(Float64ToFixed64(0.2455)))
+	fmt.Println(Float64ToFixed64(45687.2456).Mul(Float64ToFixed64(0)))
 	//fmt.Println(Float64ToFixed64(4568.015).Div(Float64ToFixed64(12)))
 	fmt.Println(Float64ToFixed64(0.2455))
 	//fmt.Println(Float64ToFixed64(9).Mul(Float64ToFixed64(4568.64485)))
