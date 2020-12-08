@@ -1,4 +1,4 @@
-package FixedNumber
+package fixed
 
 import (
 	"math"
