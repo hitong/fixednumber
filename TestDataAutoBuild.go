@@ -59,16 +59,16 @@ func BuildData(fileName, op string, num int) {
 		v2 := math.Floor((rand.Float64()+float64(rand.Int()%1024))*1000) / 1000
 		var v3 float64
 		if op == "Add" {
-			v3 = Fixed64ToFloat64(Float64ToFixed64(v1 + v2))
+			v3 = v1 + v2
 		}
 		if op == "Sub" {
-			v3 = Fixed64ToFloat64(Float64ToFixed64(v1 - v2))
+			v3 = v1 - v2
 		}
 		if op == "Mul" {
-			v3 = Fixed64ToFloat64(Float64ToFixed64(v1 * v2))
+			v3 = v1 * v2
 		}
 		if op == "Div" {
-			v3 = Fixed64ToFloat64(Float64ToFixed64(v1 / v2))
+			v3 = v1 / v2
 		}
 
 		file.WriteString(fmt.Sprintf("%s:%f %f %f \n", op, v1, v2, v3))
