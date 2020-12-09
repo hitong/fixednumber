@@ -8,11 +8,18 @@ import (
 	"testing"
 )
 
+func TestDiv64(t *testing.T)  {
+	fmt.Println(string(Float64ToFixed64(1/3.0).ToBase10()))
+}
+
 func TestBasic(t *testing.T) {
 	fmt.Println(Float64ToFixed64(489.644).Mul(Float64ToFixed64(math.Float64frombits(1 << 63))))
 	fmt.Println(Float64ToFixed64(456.6).Mul(1 << 63))
+	fmt.Println(Float64ToFixed64(1).Div(Float64ToFixed64(3)))
 	f0 := Float64ToFixed64(123.456)
 	f1 := Float64ToFixed64(123.456)
+
+
 
 	if !f0.Equal(f1) {
 		t.Error("should be equal", f0, f1)

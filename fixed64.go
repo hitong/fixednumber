@@ -173,7 +173,46 @@ func (fixed Fixed64) Float64() float64 {
 }
 
 func (fixed Fixed64) Int64() int64 {
-	return int64((fixed&^mask64S)>>precisionBitsNum) * (1 - int64((fixed&mask64S)>>63))
+	if fixed & mask64S > 0{
+		return int64((fixed&^mask64S)>>precisionBitsNum) * -1
+	}
+
+	return  int64((fixed&^mask64S)>>precisionBitsNum)
+}
+
+func (fixed Fixed64)ToBase10()[]byte{
+	s := fixed & mask64S
+	number := uint64(fixed &^ mask64S)
+	d := int64(number >> precisionBitsNum)
+	p := number & decimalBitsMask
+	floatSlice := make([]byte,1,10)
+	quo,_ := bits.Div64(0,p * 10000,1 << precisionBitsNum)//todo 优化数据转换
+
+	if s > 0{
+		floatSlice = append(floatSlice, '-')
+	}
+	floatSlice = insertToFloatSliceBase10(uint64(d),floatSlice)
+	floatSlice = append(floatSlice, '.')
+	floatSlice = insertToFloatSliceBase10(quo,floatSlice)
+
+	return floatSlice
+}
+
+func insertToFloatSliceBase10(v uint64,floatSlice []byte)[]byte{
+	var tmp  []byte
+	for v > 0{
+		tmp = append(tmp, byte(v % 10) + '0')
+		v /= 10
+	}
+
+	if len(tmp) > 0{
+		for i := len(tmp) - 1; i >= 0;i--{
+			floatSlice = append(floatSlice, tmp[i])
+		}
+	} else{
+		floatSlice = append(floatSlice, '0')
+	}
+	return floatSlice
 }
 
 func (fixed Fixed64) String() string {
@@ -207,7 +246,7 @@ func roundOdd(v, precisionBitsNum uint64) uint64 {
 	precisionBitsMask := uint64(1<<precisionBitsNum) - 1
 	flow := v & precisionBitsMask
 	cond := uint64(1 << (precisionBitsNum - 1))
-	var endBit uint64 = 0
+	var endBit uint64
 	if flow > cond || flow == cond && v&(1<<precisionBitsNum) > 0 { //向偶数舍入,统计误差最小
 		endBit = 1
 	}
