@@ -2,10 +2,9 @@ package fixed
 
 import (
 	"errors"
-	"fmt"
 	"math"
 	"math/bits"
-	"strings"
+	"sync"
 	"unsafe"
 )
 
@@ -18,17 +17,32 @@ const (
 	bias64   = (1 << (11 - 1)) - 1
 )
 
-const Precision = 20 //配置定点数精度 精度值为：1/2**Precision
-const precisionBitsNum = Precision
-const decimalBitsMask = 1<<precisionBitsNum - 1
-const MaxFixed64 = Fixed64((1 << 63) - 1)
-const MinFixed64 = ^Fixed64(0)
-const Fixed64Zero = Fixed64(0)
-const Fixed64Nan = Fixed64(1 << 63) //非数
+var Precision int64 = 0 //Fixed point precision:1/2**Precision
+
+var onceSet = &sync.Once{}
+var precisionBitsNum = Precision
+var decimalBitsMask uint64 = 1<<precisionBitsNum - 1
+
+const MaxFixed64 = Fixed64((1 << 63) - 1) //Maximum number of fixed points: 2**(63-precisionBitsNum) - 1/2**Precision
+const SmallestFixed64 = ^Fixed64(0)       //Smallest fixed point:  1/2**Precision - 2**(63-precisionBitsNum)
+const Fixed64Zero = Fixed64(0)            //Zero
+const PrecisionNumber = Fixed64(1)
 
 type Fixed64 uint64
 
-//规范数处理
+//Precision can only be set once
+func SetPrecisionOnce(precision uint64) {
+	onceSet.Do(func() {
+		if precision > 62 {
+			panic("Precision overflow")
+		}
+		Precision = int64(precision)
+		precisionBitsNum = Precision
+		decimalBitsMask = 1<<precisionBitsNum - 1
+	})
+}
+
+//Convert normalizing float point number to fixed point number
 func Float64ToFixed64(value float64) Fixed64 {
 	var valueBits = math.Float64bits(value)
 	s := valueBits & mask64S
@@ -43,7 +57,7 @@ func Float64ToFixed64(value float64) Fixed64 {
 		pBitsNum := size64M - realE
 		if pBitsNum < 0 {
 			if precisionBitsNum-pBitsNum > 63-53 {
-				panic("Fixed number: part digital overflow") //超出定点整数表示范围
+				panic("Fixed number: part digital overflow")
 			}
 
 			fixedD = m << -pBitsNum << precisionBitsNum
@@ -64,8 +78,12 @@ func Float64ToFixed64(value float64) Fixed64 {
 		if pFlowBitsNum > 53 {
 			return 0
 		}
-		fixedP = roundOdd(m, uint64(pFlowBitsNum)) >> pFlowBitsNum
-		//fixedP = roundOdd(m,uint64((size64M - precisionBitsNum) + (realE * -1))) >> ((size64M - precisionBitsNum) + (realE * -1))
+		if pFlowBitsNum <= 0 {
+			//pFlowBitsNum *= -1
+			fixedP = m << (pFlowBitsNum * -1)
+		} else {
+			fixedP = roundOdd(m, uint64(pFlowBitsNum)) >> pFlowBitsNum
+		}
 	}
 
 	result |= s
@@ -74,6 +92,7 @@ func Float64ToFixed64(value float64) Fixed64 {
 	return Fixed64(result)
 }
 
+//Convert normalizing float point number to fixed point number with error back
 func SafeFloat64ToFixed64(value float64) (Fixed64, error) {
 	if math.IsNaN(value) {
 		return 0, errors.New(string(Uint64Bits(math.Float64bits(value))) + " is NaN ")
@@ -114,10 +133,10 @@ func (fixed Fixed64) Mul(oth Fixed64) Fixed64 {
 	oth &^= mask64S
 
 	hi, lo := bits.Mul64(uint64(fixed), uint64(oth))
-	lo = roundOdd(lo, precisionBitsNum) >> precisionBitsNum
+	lo = roundOdd(lo, uint64(precisionBitsNum)) >> precisionBitsNum
 
 	hi = (hi & decimalBitsMask) << (64 - precisionBitsNum)
-	if hi == 0 && lo == 0{
+	if hi == 0 && lo == 0 {
 		return 0
 	}
 
@@ -131,7 +150,7 @@ func (fixed Fixed64) Div(oth Fixed64) Fixed64 {
 	oth &^= mask64S
 
 	quo, _ := bits.Div64(uint64(fixed>>(64-precisionBitsNum)), uint64(fixed<<precisionBitsNum), uint64(oth))
-	if quo == 0{
+	if quo == 0 {
 		return 0
 	}
 	return Fixed64(uint64(fS^oS) | quo)
@@ -153,9 +172,10 @@ func (fixed Fixed64) Great(oth Fixed64) bool {
 	return (fixed ^ mask64S) > (oth ^ mask64S)
 }
 
+//Converts Fixed64 To float64
 func (fixed Fixed64) Float64() float64 {
 	number := uint64(fixed &^ mask64S)
-	idx := bits.Len64(number)
+	idx := int64(bits.Len64(number))
 	if idx != 0 {
 		e := idx - precisionBitsNum - 1
 		number = ((1 << idx) - 1) & number
@@ -173,61 +193,111 @@ func (fixed Fixed64) Float64() float64 {
 }
 
 func (fixed Fixed64) Int64() int64 {
-	if fixed & mask64S > 0{
+	if fixed&mask64S > 0 {
 		return int64((fixed&^mask64S)>>precisionBitsNum) * -1
 	}
 
-	return  int64((fixed&^mask64S)>>precisionBitsNum)
+	return int64((fixed &^ mask64S) >> precisionBitsNum)
 }
 
-func (fixed Fixed64)ToBase10()[]byte{
-	s := fixed & mask64S
+func (fixed Fixed64) Round() int64 {
+	decimal := uint64(fixed) & decimalBitsMask
+	var roundUp int64
+	if precisionBitsNum > 0 && decimal >= (1<<(precisionBitsNum-1)) {
+		roundUp = 1
+	}
+	if fixed&mask64S > 0 {
+		return int64((fixed&^mask64S)>>precisionBitsNum)*-1 + roundUp
+	}
+
+	return int64((fixed&^mask64S)>>precisionBitsNum) + roundUp
+}
+
+//5 decimal places are retained by default
+func (fixed Fixed64) ToBase10() []byte {
+	return fixed.ToBase10N(5)
+}
+
+func (fixed Fixed64)ToBase10s(n uint) string{
+	return string(fixed.ToBase10N(n))
+}
+
+//the maximum support is 18 decimals
+func (fixed Fixed64) ToBase10N(n uint) []byte {
+	if n > 18 {
+		panic("Fixed64.ToBase10N: Not Support n > 19")
+	}
+	floatSlice := make([]byte, 0, 10)
+	if fixed&mask64S > 0 {
+		floatSlice = append(floatSlice, '-')
+	}
+
+	if n == 0 {
+		return append(floatSlice, insertToFloatSliceBase10(uint64(fixed.Abs().Round()), 0)...)
+	}
+
+	n = n + 1 // To round to the end
 	number := uint64(fixed &^ mask64S)
 	d := int64(number >> precisionBitsNum)
 	p := number & decimalBitsMask
-	floatSlice := make([]byte,1,10)
-	quo,_ := bits.Div64(0,p * 10000,1 << precisionBitsNum)//todo 优化数据转换
 
-	if s > 0{
-		floatSlice = append(floatSlice, '-')
+	hi, lo := bits.Mul64(p, uint64(math.Pow10(int(n)))) //todo optimize data processing methods
+	quo, _ := bits.Div64(hi, lo, 1<<precisionBitsNum)
+
+	partD := insertToFloatSliceBase10(uint64(d), 0)
+	partP, upToTop := carryUpBase10(roundEndBase10(insertToFloatSliceBase10(quo, int(n)))[:n-1])
+	if upToTop {
+		partD[len(partD)-1] += 1
+		partD, upToTop = carryUpBase10(partD)
 	}
-	floatSlice = insertToFloatSliceBase10(uint64(d),floatSlice)
-	floatSlice = append(floatSlice, '.')
-	floatSlice = insertToFloatSliceBase10(quo,floatSlice)
 
+	if upToTop {
+		floatSlice = append(floatSlice, '1')
+	}
+	floatSlice = append(floatSlice, partD...)
+	floatSlice = append(floatSlice, '.')
+	floatSlice = append(floatSlice, partP...)
 	return floatSlice
 }
 
-func insertToFloatSliceBase10(v uint64,floatSlice []byte)[]byte{
-	var tmp  []byte
-	for v > 0{
-		tmp = append(tmp, byte(v % 10) + '0')
+func insertToFloatSliceBase10(v uint64, n int) []byte {
+	const zeroStr = "00000000000000000000" //len 20
+
+	var ret []byte
+	if n > 0 {
+		ret = make([]byte, 0, n)
+	}
+	for v > 0 {
+		ret = append(ret, byte(v%10)+'0')
 		v /= 10
 	}
-
-	if len(tmp) > 0{
-		for i := len(tmp) - 1; i >= 0;i--{
-			floatSlice = append(floatSlice, tmp[i])
-		}
-	} else{
-		floatSlice = append(floatSlice, '0')
+	if n > len(ret) {
+		ret = append(ret, zeroStr[:n-len(ret)]...)
 	}
-	return floatSlice
+	if len(ret) > 0 {
+		for i := 0; i < len(ret)>>1; i++ {
+			ret[i], ret[len(ret)-1-i] = ret[len(ret)-1-i], ret[i]
+		}
+	} else {
+		ret = append(ret, '0')
+	}
+
+	return ret
 }
 
 func (fixed Fixed64) String() string {
 	//return strconv.FormatFloat(fixed.Float64(), 'f', -1, 64)
-	s := strings.TrimRightFunc(fmt.Sprintf("%f", fixed.Float64()), func(r rune) bool {
-		if r == '0' || r == '.' {
-			return true
-		}
-		return false
-	})
-
-	if s == "" {
-		s = "0"
-	}
-	return s
+	//s := strings.TrimRightFunc(fmt.Sprintf("%f", fixed.Float64()), func(r rune) bool {
+	//	if r == '0' || r == '.' {
+	//		return true
+	//	}
+	//	return false
+	//})
+	//
+	//if s == "" {
+	//	s = "0"
+	//}
+	return string(fixed.ToBase10())
 }
 
 func Uint64Bits(v uint64) (r []byte) {
@@ -242,13 +312,50 @@ func Uint64Bits(v uint64) (r []byte) {
 	return
 }
 
+// round to even
 func roundOdd(v, precisionBitsNum uint64) uint64 {
 	precisionBitsMask := uint64(1<<precisionBitsNum) - 1
 	flow := v & precisionBitsMask
 	cond := uint64(1 << (precisionBitsNum - 1))
 	var endBit uint64
-	if flow > cond || flow == cond && v&(1<<precisionBitsNum) > 0 { //向偶数舍入,统计误差最小
+	if flow > cond || flow == cond && v&(1<<precisionBitsNum) > 0 {
 		endBit = 1
 	}
+
 	return (v &^ precisionBitsMask) + (endBit << precisionBitsNum)
+}
+
+func roundEndBase10(p []byte) []byte {
+	if p == nil || len(p) == 0 {
+		return []byte{'0'}
+	}
+
+	if p[len(p)-1] > '4' {
+		p[len(p)-1] = 0
+		if len(p) == 1 {
+			p[0] = '9' + 1
+			return p
+		}
+		p[len(p)-2] += 1
+	}
+
+	return p
+}
+
+func carryUpBase10(p []byte) ([]byte, bool) {
+	i := len(p) - 1
+	for ; i >= 1; i-- {
+		if p[i] > '9' {
+			p[i] = '0'
+			p[i-1] += 1
+		} else {
+			return p, false
+		}
+	}
+	upToTop := p[0] == '9'+1
+	if upToTop {
+		p[0] = '0'
+	}
+
+	return p, upToTop
 }
