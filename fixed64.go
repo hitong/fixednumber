@@ -17,20 +17,30 @@ const (
 	bias64   = (1 << (11 - 1)) - 1
 )
 
-var Precision int64 = 0 //Fixed point precision:1/2**Precision
+//Precision is the bit Precision of a fixed-point number
+var Precision int64
 
 var onceSet = &sync.Once{}
 var precisionBitsNum = Precision
 var decimalBitsMask uint64 = 1<<precisionBitsNum - 1
 
-const MaxFixed64 = Fixed64((1 << 63) - 1) //Maximum number of fixed points: 2**(63-precisionBitsNum) - 1/2**Precision
-const SmallestFixed64 = ^Fixed64(0)       //Smallest fixed point:  1/2**Precision - 2**(63-precisionBitsNum)
-const Fixed64Zero = Fixed64(0)            //Zero
-const PrecisionNumber = Fixed64(1)        //1 / 2**Precision
+//MaxFixed64 is the maximum number of fixed points,and its value is 2**(63 - Precision) + 2 ** Precision - 2
+const MaxFixed64 = Fixed64((1 << 63) - 1)
 
+//SmallestFixed64 is the minimum value of a fixed-point number, and its value is 1/2**Precision - 2**(63-precisionBitsNum)
+const SmallestFixed64 = ^Fixed64(0)
+
+//Fixed64Zero is the zero value of fixed number
+const Fixed64Zero = Fixed64(0)
+
+//PrecisionNumber is the minimum precision value of a fixed-point number, and its value is 1 / 2**Precision
+const PrecisionNumber = Fixed64(1)
+
+// Fixed64 uses uint64 type to facilitate bit conversion.Fixed64 can use +-0.
+// Range: [-(2**(63 - Precision) + 2 ** Precision - 2), 2**(63 - Precision) + 2 ** Precision - 2].
 type Fixed64 uint64
 
-//Precision can only be set once
+//SetPrecisionOnce can only be successfully set once
 func SetPrecisionOnce(precision uint64) {
 	onceSet.Do(func() {
 		if precision > 62 {
@@ -42,7 +52,9 @@ func SetPrecisionOnce(precision uint64) {
 	})
 }
 
-//Convert normalizing float point number to fixed point number
+// Float64ToFixed64 can convert the normalized number and normalized number conforming to IEEE 754
+// double precision floating-point number standard to fixed-point number. When the function processes
+// Nan and Inf, there may be a panic
 func Float64ToFixed64(value float64) Fixed64 {
 	var valueBits = math.Float64bits(value)
 	s := valueBits & mask64S
@@ -67,7 +79,7 @@ func Float64ToFixed64(value float64) Fixed64 {
 			pMask := uint64((1 << pBitsNum) - 1)
 
 			if pBitsFlowNum <= 0 {
-				fixedP = (m & pMask) << (-1*pBitsFlowNum)
+				fixedP = (m & pMask) << (-1 * pBitsFlowNum)
 			} else {
 				fixedP = roundOdd(m&pMask, uint64(pBitsFlowNum)) >> pBitsFlowNum
 			}
@@ -92,7 +104,7 @@ func Float64ToFixed64(value float64) Fixed64 {
 	return Fixed64(result)
 }
 
-//Convert normalizing float point number to fixed point number with error back
+//SafeFloat64ToFixed64 checks NaN and Inf before floating point conversion, which guarantees some accuracy
 func SafeFloat64ToFixed64(value float64) (Fixed64, error) {
 	if math.IsNaN(value) {
 		return 0, errors.New("Float64 value is NaN ")
@@ -218,7 +230,7 @@ func (fixed Fixed64) ToBase10() []byte {
 	return fixed.ToBase10N(5)
 }
 
-func (fixed Fixed64)ToBase10s(n uint) string{
+func (fixed Fixed64) ToBase10s(n uint) string {
 	return string(fixed.ToBase10N(n))
 }
 
@@ -247,7 +259,7 @@ func (fixed Fixed64) ToBase10N(n uint) []byte {
 	partD := insertToFloatSliceBase10(uint64(d), 0)
 	partP, upToTop := carryUpBase10(roundEndBase10(insertToFloatSliceBase10(quo, int(n)))[:n-1])
 	if upToTop {
-		partD[len(partD)-1] += 1
+		partD[len(partD)-1]++
 		partD, upToTop = carryUpBase10(partD)
 	}
 
@@ -305,7 +317,7 @@ func Uint64Bits(v uint64) (r []byte) {
 	for i := 0; i < 64; i++ {
 		r[63-i] = '0'
 		if (v & (1 << i)) > 0 {
-			r[63-i] += 1
+			r[63-i]++
 			v &^= 1 << i
 		}
 	}
@@ -336,7 +348,7 @@ func roundEndBase10(p []byte) []byte {
 		//	p[0] = '9' + 1
 		//	return p
 		//}
-		p[len(p)-2] += 1
+		p[len(p)-2]++
 	}
 
 	return p
@@ -347,7 +359,7 @@ func carryUpBase10(p []byte) ([]byte, bool) {
 	for ; i >= 1; i-- {
 		if p[i] > '9' {
 			p[i] = '0'
-			p[i-1] += 1
+			p[i-1]++
 		} else {
 			return p, false
 		}
