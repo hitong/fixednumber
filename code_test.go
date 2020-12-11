@@ -9,19 +9,79 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 )
 
 func TestConvAllBranch(t *testing.T){
-	fmt.Println(math.MaxFloat64 + math.SmallestNonzeroFloat64 * 2)
+	defer func() {
+		if err := recover(); err != nil{
+			t.Fail()
+		}
+		onceSet = &sync.Once{}
+	}()
 	SetPrecisionOnce(20)
-	fmt.Println(MaxFixed64.ToBase10s(18))
-	fmt.Println(PrecisionNumber.Add(MaxFixed64).ToBase10s(18))
-	MaxFixed64.Mul(MaxFixed64)
+	MaxFixed64.ToBase10s(18)
+	PrecisionNumber.Add(MaxFixed64).ToBase10s(18)
+	MaxFixed64.Mul(MaxFixed64).Float64()
+	MaxFixed64.ToBase10N(0)
+	insertToFloatSliceBase10(0,0)
+	Fixed64Zero.Div(MaxFixed64)
+	Float64ToFixed64(0.9).ToBase10s(1)
+	Float64ToFixed64(1 << 40 + 0.15464)
+	onceSet = &sync.Once{}
+	SetPrecisionOnce(60)
+	fmt.Println(Float64ToFixed64(0.05))
+	onceSet = &sync.Once{}
+	SetPrecisionOnce(5)
+	Float64ToFixed64(2 << 53)
 }
+
+func TestFloat64ToFixed64Overflow(t *testing.T){
+	defer func() {
+		if err := recover();err != nil{
+			if err == "Fixed number: part digital overflow"{
+				return
+			}
+		}
+
+		t.Fail()
+	}()
+	SetPrecisionOnce(20)
+	Float64ToFixed64(math.Pow10(100))
+}
+
+func TestPanicFixedConvBase10(t *testing.T){
+	defer func() {
+		if err := recover(); err != nil{
+			if err == "Fixed64.ToBase10N: Not Support n > 19"{
+				return
+			}
+		}
+
+		t.Fail()
+	}()
+
+	SetPrecisionOnce(20)
+	defer func() {onceSet = &sync.Once{}}()
+	Float64ToFixed64(1).ToBase10N(88)
+}
+
+func TestPanicPrecisionSet(t *testing.T){
+	defer func() {
+		err := recover()
+		if err != "Precision overflow"{
+			t.Fail()
+		}
+	}()
+	SetPrecisionOnce(63)
+	defer func() {onceSet = &sync.Once{}}()
+}
+
 
 func TestBasic(t *testing.T) {
 	SetPrecisionOnce(20)
+	defer func() {onceSet = &sync.Once{}}()
 	f0 := Float64ToFixed64(123.456)
 	f1 := Float64ToFixed64(123.456)
 
@@ -38,13 +98,22 @@ func TestBasic(t *testing.T) {
 	}
 
 	f0 = Float64ToFixed64(0.499)
-	f1 = Float64ToFixed64(0.5011)
+	f1 = Float64ToFixed64(-0.5011)
+	if f1.Int64() != 0{
+		t.Error("should be round to equal ", 0 , f1.Int64())
+	}
+
 	if f0.Round() != 0{
 		t.Error("should be round to equal ", 0 , string(f0.ToBase10()), f0.Round())
 	}
 
-	if f1.Round() != 1{
-		t.Error("should be round to equal ",1, string(f1.ToBase10()), f1.Round())
+	f0 = Float64ToFixed64(999.999)
+	if f0.ToBase10s(2) != "1000.00"{
+		t.Error("should be round to equal ", "1000.00" , f0.ToBase10s(2))
+	}
+
+	if f1.Round() != -1{
+		t.Error("should be round to equal ",-1,f1.ToBase10s(3), f1.Round())
 	}
 	f0 = Float64ToFixed64(1)
 	f1 = Float64ToFixed64(.5).Add(Float64ToFixed64(.5))
@@ -61,33 +130,67 @@ func TestBasic(t *testing.T) {
 	if f0.ToBase10s(3) != "0.999" {
 		t.Error("should be equal", f0, "0.999")
 	}
-}
 
-func TestUint64Bits(t *testing.T) {
-	fmt.Println(string(Uint64Bits(math.Float64bits(rand.Float64()))))
-}
+	f0 = Float64ToFixed64(.331)
+	f1 = Float64ToFixed64(.332)
+	if !f0.Less(f1){
+		t.Error("should be less:",f0,f1)
+	}
 
-func TestSafeFloat64ToFixed64(t *testing.T) {
-	if _, err := SafeFloat64ToFixed64(math.Float64frombits(^uint64(0))); err != nil {
+	if !f1.Great(f0){
+		t.Error("should be great:",f1,f0)
+	}
+
+	if !f0.Equal(f0.Mul(Float64ToFixed64(-1)).Abs()){
+		t.Error("should be equal ",f1,f0.Mul(Float64ToFixed64(-1)).Abs())
+	}
+
+	f0 = Float64ToFixed64(1)
+	f1 = Float64ToFixed64(0.1)
+	f2 = Float64ToFixed64(10)
+	if f0.Div(f1).ToBase10s(3) != f2.ToBase10s(3) {
+		t.Error("should be equal ",f0.Div(f1),f2)
+	}
+
+	if f0.Div(f2).ToBase10s(3) != f1.ToBase10s(3){
+		t.Error("should be equal ",f0.Div(f2),f1)
+	}
+
+	if !Fixed64Zero.Mul(MaxFixed64).Equal(MaxFixed64.Mul(Fixed64Zero)){
+		t.Error("should be equal  ",Fixed64Zero.Mul(MaxFixed64),MaxFixed64.Mul(Fixed64Zero))
+	}
+
+	if !MaxFixed64.Sub(MaxFixed64).Equal(Fixed64Zero){
+		t.Error("should be equal  ",MaxFixed64.Sub(MaxFixed64),Fixed64Zero)
 	}
 }
 
-func TestFixed64(t *testing.T) {
+func TestUint64Bits(t *testing.T) {
 	SetPrecisionOnce(20)
-	v := 630.506836 * 237.22168
-	fmt.Println(v) // 149569.890625 149570.131554
-	//fmt.Println(fmt.Sprintf("%.3f",Fixed64ToFloat64(Float64ToFixed64(45687.2456))))
-	fmt.Println(fmt.Sprintf("%.3f", Float64ToFixed64(489.15641).Mul(Float64ToFixed64(3.64)).Float64()))
+	defer func() {onceSet = &sync.Once{}}()
+	if string(Uint64Bits(uint64(0b11000111001010101010))) != "0000000000000000000000000000000000000000000011000111001010101010"{
+		t.Error("should be equal ",string(Uint64Bits(uint64(0b11000111001010101010))), "0000000000000000000000000000000000000000000011000111001010101010")
+	}
+}
 
-	fmt.Println(Float64ToFixed64(0.14564).Sub(Float64ToFixed64(0.14564)))
-	fmt.Println(Float64ToFixed64(0.14564).Mul(Float64ToFixed64(0.14564)))
-	fmt.Println(Float64ToFixed64(45687.2456).Mul(Float64ToFixed64(0)))
-	//fmt.Println(Float64ToFixed64(4568.015).Div(Float64ToFixed64(12)))
-	fmt.Println(Float64ToFixed64(0.2455))
-	//fmt.Println(Float64ToFixed64(9).Mul(Float64ToFixed64(4568.64485)))
-	//fmt.Println(Float64ToFixed64(458.654).Add(Float64ToFixed64(45648.656)))
-	//fmt.Println(Float64ToFixed64(3111984.465489))
-	//fmt.Println(Float64ToFixed64(3111984.465489).Add(Float64ToFixed64(3111984.465489)))
+func TestSafeFloat64ToFixed64(t *testing.T) {
+	SetPrecisionOnce(20)
+	defer func() {onceSet = &sync.Once{}}()
+	if _, err := SafeFloat64ToFixed64(math.Float64frombits(^uint64(0))); err != nil {
+		if err.Error() != "Float64 value is NaN "{
+			t.Error("should be NaN:" ,^uint64(0))
+		}
+	}
+
+	if _, err := SafeFloat64ToFixed64(math.Float64frombits((1 << 11 - 1) << 52)); err != nil {
+		if err.Error() != "Float64 value is Inf "{
+			t.Error("should be NaN:" ,^uint64(0))
+		}
+	}
+
+	if v, _ := SafeFloat64ToFixed64(math.Float64frombits(0b0011110101010101001)); v !=0 {
+		t.Error("The non-normalized number should be 0")
+	}
 }
 
 func TestVerifyFixedCompute(t *testing.T){
@@ -169,7 +272,7 @@ func readData(fileName string) (op []string, v1 []float64, v2 []float64, v3 []fl
 }
 
 func buildData(fileName, op string, num int,decimalSize int) {
-	file, err := os.OpenFile(fileName, os.O_CREATE|os.O_RDWR, 0666)
+	file, err := os.OpenFile(fileName, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0666)
 	if err != nil {
 		panic(err)
 	}

@@ -26,7 +26,7 @@ var decimalBitsMask uint64 = 1<<precisionBitsNum - 1
 const MaxFixed64 = Fixed64((1 << 63) - 1) //Maximum number of fixed points: 2**(63-precisionBitsNum) - 1/2**Precision
 const SmallestFixed64 = ^Fixed64(0)       //Smallest fixed point:  1/2**Precision - 2**(63-precisionBitsNum)
 const Fixed64Zero = Fixed64(0)            //Zero
-const PrecisionNumber = Fixed64(1)
+const PrecisionNumber = Fixed64(1)        //1 / 2**Precision
 
 type Fixed64 uint64
 
@@ -67,7 +67,7 @@ func Float64ToFixed64(value float64) Fixed64 {
 			pMask := uint64((1 << pBitsNum) - 1)
 
 			if pBitsFlowNum <= 0 {
-				fixedP = m & pMask
+				fixedP = (m & pMask) << (-1*pBitsFlowNum)
 			} else {
 				fixedP = roundOdd(m&pMask, uint64(pBitsFlowNum)) >> pBitsFlowNum
 			}
@@ -95,10 +95,10 @@ func Float64ToFixed64(value float64) Fixed64 {
 //Convert normalizing float point number to fixed point number with error back
 func SafeFloat64ToFixed64(value float64) (Fixed64, error) {
 	if math.IsNaN(value) {
-		return 0, errors.New(string(Uint64Bits(math.Float64bits(value))) + " is NaN ")
+		return 0, errors.New("Float64 value is NaN ")
 	}
 	if math.IsInf(value, 0) {
-		return 0, errors.New(string(Uint64Bits(math.Float64bits(value))) + " is Inf ")
+		return 0, errors.New("Float64 value is Inf ")
 	}
 
 	return Float64ToFixed64(value), nil
@@ -207,7 +207,7 @@ func (fixed Fixed64) Round() int64 {
 		roundUp = 1
 	}
 	if fixed&mask64S > 0 {
-		return int64((fixed&^mask64S)>>precisionBitsNum)*-1 + roundUp
+		return (int64((fixed&^mask64S)>>precisionBitsNum) + roundUp) * -1
 	}
 
 	return int64((fixed&^mask64S)>>precisionBitsNum) + roundUp
@@ -326,16 +326,16 @@ func roundOdd(v, precisionBitsNum uint64) uint64 {
 }
 
 func roundEndBase10(p []byte) []byte {
-	if p == nil || len(p) == 0 {
-		return []byte{'0'}
-	}
+	//if p == nil || len(p) == 0 {
+	//	return []byte{'0'}
+	//}
 
 	if p[len(p)-1] > '4' {
 		p[len(p)-1] = 0
-		if len(p) == 1 {
-			p[0] = '9' + 1
-			return p
-		}
+		//if len(p) == 1 {
+		//	p[0] = '9' + 1
+		//	return p
+		//}
 		p[len(p)-2] += 1
 	}
 
