@@ -44,7 +44,6 @@ func TestFloat64ToFixed64Overflow(t *testing.T) {
 				return
 			}
 		}
-
 		t.Fail()
 	}()
 	SetPrecisionOnce(20)
@@ -174,6 +173,12 @@ func TestUint64Bits(t *testing.T) {
 
 func TestSafeFloat64ToFixed64(t *testing.T) {
 	SetPrecisionOnce(20)
+	var a =  49873887.641
+	var b = 4581548.648
+	fmt.Println(Float64ToFixed64(a).Add(Float64ToFixed64(b)))
+	fmt.Println(Float64ToFixed64(a).Sub(Float64ToFixed64(b)))
+	fmt.Println(Float64ToFixed64(a).Mul(Float64ToFixed64(b)))
+	fmt.Println(Float64ToFixed64(a).Div(Float64ToFixed64(b)))
 	defer func() { onceSet = &sync.Once{} }()
 	if _, err := SafeFloat64ToFixed64(math.Float64frombits(^uint64(0))); err != nil {
 		if err.Error() != "Float64 value is NaN " {
@@ -194,13 +199,14 @@ func TestSafeFloat64ToFixed64(t *testing.T) {
 
 func TestVerifyFixedCompute(t *testing.T) {
 	//save to file
+	SetPrecisionOnce(20)
 	buildData("AddData.txt", "Add", 1000, 3)
 	buildData("SubData.txt", "Sub", 1000, 3)
 	buildData("MulData.txt", "Mul", 1000, 3)
 	buildData("DivData.txt", "Div", 1000, 3)
 
 	paths := []string{"AddData.txt", "SubData.txt", "DivData.txt", "MulData.txt"}
-	SetPrecisionOnce(20)
+
 
 	for _, path := range paths {
 		if op, v1, v2, v3, err := readData(path); err != nil {
@@ -275,25 +281,25 @@ func buildData(fileName, op string, num int, decimalSize int) {
 	if err != nil {
 		panic(err)
 	}
-	var fmtFloat = "%." + fmt.Sprintf("%d", decimalSize) + "f "
+	//var fmtFloat = "%." + fmt.Sprintf("%d", decimalSize) + "f "
+	var fmtFloat = "%d "
 	for i := 0; i < num; i++ {
-		v1 := math.Floor((rand.Float64()+float64(rand.Int()%1024))*1000) / 1000
-		v2 := math.Floor((rand.Float64()+float64(rand.Int()%1024))*1000) / 1000
-		var v3 float64
+		f1 := Float64ToFixed64(math.Floor((rand.Float64()+float64(rand.Int()%1024))*1000) / 1000.0)
+		f2 := Float64ToFixed64(math.Floor((rand.Float64()+float64(rand.Int()%1024))*1000) / 1000.0)
+		var f3 Fixed64
 		if op == "Add" {
-			v3 = v1 + v2
+			f3 =f1.Add(f2)
 		}
 		if op == "Sub" {
-			v3 = v1 - v2
+			f3 =f1.Sub(f2)
 		}
 		if op == "Mul" {
-			v3 = v1 * v2
+			f3 =f1.Mul(f2)
 		}
 		if op == "Div" {
-			v3 = v1 / v2
+			f3 =f1.Div(f2)
 		}
-
-		file.WriteString(fmt.Sprintf("%s:"+fmtFloat+fmtFloat+fmtFloat+"\n", op, v1, v2, v3))
+		file.WriteString(fmt.Sprintf("%s:"+fmtFloat+fmtFloat+fmtFloat+"\n", op, uint64(f1), uint64(f2), uint64(f3)))
 	}
 	file.Close()
 }
