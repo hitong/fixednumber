@@ -16,25 +16,53 @@ import (
 func TestConvAllBranch(t *testing.T) {
 	defer func() {
 		if err := recover(); err != nil {
-			t.Fail()
+			t.Error(err)
 		}
 		onceSet = &sync.Once{}
 	}()
 	SetPrecisionOnce(20)
 	MaxFixed64.ToBase10s(18)
 	PrecisionNumber.Add(MaxFixed64).ToBase10s(18)
-	MaxFixed64.Mul(MaxFixed64).Float64()
 	MaxFixed64.ToBase10N(0)
 	insertToFloatSliceBase10(0, 0)
 	Fixed64Zero.Div(MaxFixed64)
 	Float64ToFixed64(0.9).ToBase10s(1)
-	Float64ToFixed64(1<<40 + 0.15464)
+	Float64ToFixed64(1<<40 + 0.15464).Float64()
+	Fixed64(1).Float64()
 	onceSet = &sync.Once{}
 	SetPrecisionOnce(60)
 	fmt.Println(Float64ToFixed64(0.05))
 	onceSet = &sync.Once{}
 	SetPrecisionOnce(5)
 	Float64ToFixed64(2 << 53)
+}
+
+func TestFloat64AddOverFlow(t *testing.T){
+	defer func() {
+		if err := recover();err == nil || !strings.Contains(err.(string), "Fixed64: Add Overflow"){
+			t.Fail()
+		}
+
+		onceSet = &sync.Once{}
+	}()
+	SetPrecisionOnce(20)
+	f0 := Fixed64((1 << 63)- 1)
+	f1 := Fixed64(1)
+	f0.Add(f1)
+}
+
+func TestFloat64MulOverFlow(t *testing.T){
+	defer func() {
+		if err := recover();err == nil || err != "Fixed64: Number OverFlow"{
+			t.Fail()
+		}
+
+		onceSet = &sync.Once{}
+	}()
+	SetPrecisionOnce(20)
+	f0 := Float64ToFixed64(5744874.6666664)
+	f1 := Float64ToFixed64(12124678.6666664)
+	f0.Mul(f1)
 }
 
 func TestFloat64ToFixed64Overflow(t *testing.T) {
@@ -173,8 +201,8 @@ func TestUint64Bits(t *testing.T) {
 
 func TestSafeFloat64ToFixed64(t *testing.T) {
 	SetPrecisionOnce(20)
-	var a =  49873887.641
-	var b = 4581548.648
+	var a =  49877.641
+	var b = 4588.648
 	fmt.Println(Float64ToFixed64(a).Add(Float64ToFixed64(b)))
 	fmt.Println(Float64ToFixed64(a).Sub(Float64ToFixed64(b)))
 	fmt.Println(Float64ToFixed64(a).Mul(Float64ToFixed64(b)))
@@ -213,24 +241,24 @@ func TestVerifyFixedCompute(t *testing.T) {
 			panic(err)
 		} else {
 			for i := 0; i < len(op); i++ {
-				fix1 := Float64ToFixed64(v1[i])
-				fix2 := Float64ToFixed64(v2[i])
+				fix1 := Fixed64(v1[i])
+				fix2 := Fixed64(v2[i])
 				switch op[i] {
 				case "Add":
-					if strings.Compare(string(fix1.Add(fix2).ToBase10N(3)), fmt.Sprintf("%.3f", v3[i])) != 0 {
-						println("Add:" + fmt.Sprintf("%.f %s %s %s %.3f", fix1.Add(fix2).Float64()-v3[i], fix1, fix2, fix1.Add(fix2).ToBase10N(3), v3[i]))
+					if !fix1.Add(fix2).Equal(Fixed64(v3[i])) {
+						t.Error("Add:" + fmt.Sprintf("%f != %f", fix1.Add(fix2).Float64(), Fixed64(v3[i]).Float64()))
 					}
 				case "Sub":
-					if strings.Compare(string(fix1.Sub(fix2).ToBase10N(3)), fmt.Sprintf("%.3f", v3[i])) != 0 {
-						println("Sub:" + fmt.Sprintf("%f %s %s %s %.3f", fix1.Sub(fix2).Float64()-v3[i], fix1, fix2, fix1.Sub(fix2).ToBase10N(3), v3[i]))
+					if !fix1.Sub(fix2).Equal(Fixed64(v3[i])) {
+						t.Error("Sub:" + fmt.Sprintf("%f != %f", fix1.Add(fix2).Float64(), Fixed64(v3[i]).Float64()))
 					}
 				case "Div":
-					if strings.Compare(string(fix1.Div(fix2).ToBase10N(3)), fmt.Sprintf("%.3f", v3[i])) != 0 {
-						println("Div:" + fmt.Sprintf("%f %s %s %s %.3f", fix1.Div(fix2).Float64()-v3[i], fix1, fix2, fix1.Div(fix2).ToBase10N(3), v3[i]))
+					if !fix1.Div(fix2).Equal(Fixed64(v3[i])) {
+						t.Error("Div:" + fmt.Sprintf("%f != %f", fix1.Add(fix2).Float64(), Fixed64(v3[i]).Float64()))
 					}
 				case "Mul":
-					if strings.Compare(string(fix1.Mul(fix2).ToBase10N(3)), fmt.Sprintf("%.3f", v3[i])) != 0 {
-						println("Mul:" + fmt.Sprintf("%f %s %s %s %.3f", fix1.Mul(fix2).Float64()-v3[i], fix1, fix2, fix1.Mul(fix2).ToBase10N(3), v3[i]))
+					if !fix1.Mul(fix2).Equal(Fixed64(v3[i])) {
+						t.Error("Mul:" + fmt.Sprintf("%f != %f", fix1.Add(fix2).Float64(), Fixed64(v3[i]).Float64()))
 					}
 				}
 			}
@@ -238,7 +266,7 @@ func TestVerifyFixedCompute(t *testing.T) {
 	}
 }
 
-func readData(fileName string) (op []string, v1 []float64, v2 []float64, v3 []float64, err error) {
+func readData(fileName string) (op []string, v1 []uint64, v2 []uint64, v3 []uint64, err error) {
 	var file *os.File
 	file, err = os.OpenFile(fileName, os.O_CREATE|os.O_RDWR, 0666)
 	defer file.Close()
@@ -262,9 +290,9 @@ func readData(fileName string) (op []string, v1 []float64, v2 []float64, v3 []fl
 		if len(nums) != 4 {
 			return nil, nil, nil, nil, errors.New("data in wrong format")
 		}
-		num1, err1 := strconv.ParseFloat(nums[0], 64)
-		num2, err2 := strconv.ParseFloat(nums[1], 64)
-		num3, err3 := strconv.ParseFloat(nums[2], 64)
+		num1, err1 := strconv.ParseUint(nums[0],10, 64)
+		num2, err2 :=  strconv.ParseUint(nums[1],10, 64)
+		num3, err3 :=  strconv.ParseUint(nums[2],10, 64)
 		if err1 != nil || err2 != nil || err3 != nil {
 			return nil, nil, nil, nil, errors.New("parse number error")
 		}

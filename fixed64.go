@@ -122,7 +122,11 @@ func (fixed Fixed64) Add(oth Fixed64) Fixed64 {
 	fixed &^= mask64S
 	oth &^= mask64S
 	if fS == oS {
-		return Fixed64(uint64(fixed+oth) | fS)
+		hi,lo := add64(uint64(fixed),uint64(oth))
+		if hi >> 31 > 0{
+			panic("Fixed64: Add Overflow " + fixed.ToBase10s(18) + " " + oth.ToBase10s(18))
+		}
+		return Fixed64(hi << 32 | lo | fS)
 	} else {
 		if fixed > oth {
 			return Fixed64(uint64(fixed-oth) | fS)
@@ -132,6 +136,19 @@ func (fixed Fixed64) Add(oth Fixed64) Fixed64 {
 			return 0
 		}
 	}
+}
+
+func add64(x,y uint64)(hi,lo uint64){
+	const mask32 = 1 << 32 - 1
+	var x0 = x >> 32
+	var x1 = x & mask32
+	var y0 = y >> 32
+	var y1 = y & mask32
+	lo = x1 + y1
+	var u = lo >> 32
+	lo = lo & mask32
+	hi = x0 + y0 + u
+	return
 }
 
 func (fixed Fixed64) Sub(oth Fixed64) Fixed64 {
@@ -146,6 +163,9 @@ func (fixed Fixed64) Mul(oth Fixed64) Fixed64 {
 
 	hi, lo := bits.Mul64(uint64(fixed), uint64(oth))
 	lo = roundOdd(lo, uint64(precisionBitsNum)) >> precisionBitsNum
+	if hi >> precisionBitsNum > 0{
+		panic("Fixed64: Number OverFlow")
+	}
 
 	hi = (hi & decimalBitsMask) << (64 - precisionBitsNum)
 	if hi == 0 && lo == 0 {
