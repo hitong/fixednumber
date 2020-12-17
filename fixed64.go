@@ -2,8 +2,11 @@ package fixed
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"math/bits"
+	"strconv"
+	"strings"
 	"sync"
 	"unsafe"
 )
@@ -104,6 +107,52 @@ func Float64ToFixed64(value float64) Fixed64 {
 	return Fixed64(result)
 }
 
+// Str2Fixed64 produces the result by converting the string value to a two-part float,
+// and then performing a combination of division and addition.The efficiency of the function may not be high,
+// there should be a better implementation.
+//
+// Note: the function only supports processing data in (%d+.%d+)
+func Str2Fixed64(value string)(Fixed64,error){
+	s := uint64(0)
+	if strings.Contains(value,"-"){
+		value = value[1:]
+		s = mask64S
+	}
+	values := strings.Split(value,".")
+
+	if len(values) == 0 || len(values) > 2{
+		return 0,errors.New(fmt.Sprintf("Fixed64: %s format is err ",value))
+	}
+	if len(values) == 1{
+		values = append(values, "0")
+	}
+
+	if values[0] == ""{
+		values[0] = "0"
+	} else if values[1] == ""{
+		values[1] = "0"
+	}
+
+	di,e1 := parseStringToFixed64(values[0])
+	de,e2 := parseStringToFixed64(values[1])
+	if e1 != nil || e2 != nil{
+		return 0,errors.New(fmt.Sprintf("Fixed64：%s con not parse to Fixed64 ",value))
+	}
+
+	dee := Float64ToFixed64(math.Pow10(len(values[1])))
+
+	return Fixed64(uint64(di.Add(de.Div(dee))) | s),nil
+}
+
+func parseStringToFixed64(v string)(Fixed64, error){
+	if f,err := strconv.ParseFloat(v,64);err != nil{
+		return 0,err
+	} else {
+		return Float64ToFixed64(f),nil
+	}
+}
+
+
 //SafeFloat64ToFixed64 checks NaN and Inf before floating point conversion, which guarantees some accuracy
 func SafeFloat64ToFixed64(value float64) (Fixed64, error) {
 	if math.IsNaN(value) {
@@ -124,7 +173,7 @@ func (fixed Fixed64) Add(oth Fixed64) Fixed64 {
 	if fS == oS {
 		hi,lo := add64(uint64(fixed),uint64(oth))
 		if hi >> 31 > 0{
-			panic("Fixed64: Add Overflow " + fixed.ToBase10s(18) + " " + oth.ToBase10s(18))
+			panic("Fixed64: Add Overflow " + fixed.ToBase10N(18) + " " + oth.ToBase10N(18))
 		}
 		return Fixed64(hi << 32 | lo | fS)
 	} else {
@@ -246,16 +295,12 @@ func (fixed Fixed64) Round() int64 {
 }
 
 //5 decimal places are retained by default
-func (fixed Fixed64) ToBase10() []byte {
+func (fixed Fixed64) ToBase10() string {
 	return fixed.ToBase10N(5)
 }
 
-func (fixed Fixed64) ToBase10s(n uint) string {
-	return string(fixed.ToBase10N(n))
-}
-
 //the maximum support is 18 decimals
-func (fixed Fixed64) ToBase10N(n uint) []byte {
+func (fixed Fixed64) ToBase10N(n uint) string {
 	if n > 18 {
 		panic("Fixed64.ToBase10N: Not Support n > 19")
 	}
@@ -265,7 +310,7 @@ func (fixed Fixed64) ToBase10N(n uint) []byte {
 	}
 
 	if n == 0 {
-		return append(floatSlice, insertToFloatSliceBase10(uint64(fixed.Abs().Round()), 0)...)
+		return string(append(floatSlice, insertToFloatSliceBase10(uint64(fixed.Abs().Round()), 0)...))
 	}
 
 	n = n + 1 // To round to the end
@@ -289,7 +334,7 @@ func (fixed Fixed64) ToBase10N(n uint) []byte {
 	floatSlice = append(floatSlice, partD...)
 	floatSlice = append(floatSlice, '.')
 	floatSlice = append(floatSlice, partP...)
-	return floatSlice
+	return string(floatSlice)
 }
 
 func insertToFloatSliceBase10(v uint64, n int) []byte {

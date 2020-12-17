@@ -21,17 +21,16 @@ func TestConvAllBranch(t *testing.T) {
 		onceSet = &sync.Once{}
 	}()
 	SetPrecisionOnce(20)
-	MaxFixed64.ToBase10s(18)
-	PrecisionNumber.Add(MaxFixed64).ToBase10s(18)
+	MaxFixed64.ToBase10N(18)
 	MaxFixed64.ToBase10N(0)
 	insertToFloatSliceBase10(0, 0)
 	Fixed64Zero.Div(MaxFixed64)
-	Float64ToFixed64(0.9).ToBase10s(1)
+	Float64ToFixed64(0.9).ToBase10N(1)
 	Float64ToFixed64(1<<40 + 0.15464).Float64()
 	Fixed64(1).Float64()
 	onceSet = &sync.Once{}
 	SetPrecisionOnce(60)
-	fmt.Println(Float64ToFixed64(0.05))
+	Float64ToFixed64(0.05).String()
 	onceSet = &sync.Once{}
 	SetPrecisionOnce(5)
 	Float64ToFixed64(2 << 53)
@@ -105,8 +104,29 @@ func TestPanicPrecisionSet(t *testing.T) {
 	defer func() { onceSet = &sync.Once{} }()
 }
 
+func TestStr2Fixed64(t *testing.T) {
+	SetPrecisionOnce(20)
+	defer func() { onceSet = &sync.Once{} }()
+	var values = []string{"1248.154","0.111","3.133","999.489","48487",".144848","1458.","-1564.154","-0.1"}
+	for _,value := range values{
+		if fix,err := Str2Fixed64(value); err != nil{
+			t.Error(err)
+		} else {
+			fmt.Println(value,fix)
+		}
+	}
+	values = []string{"12.48.154",".",".00.1215"}
+	for _,value := range values{
+		if _,err := Str2Fixed64(value); err == nil{
+			t.Error("should has err ", value)
+		}
+	}
+}
+
 func TestBasic(t *testing.T) {
 	SetPrecisionOnce(20)
+	var v = Fixed64((1 << 63) - 1).Div(Fixed64(4561356462))
+	fmt.Println(v)
 	defer func() { onceSet = &sync.Once{} }()
 	f0 := Float64ToFixed64(123.456)
 	f1 := Float64ToFixed64(123.456)
@@ -119,7 +139,7 @@ func TestBasic(t *testing.T) {
 		t.Error("should be equal", f0.Int64(), 123)
 	}
 
-	if f0.ToBase10s(3) != "123.456" {
+	if f0.ToBase10N(3) != "123.456" {
 		t.Error("should be equal", f0.String(), "123.456")
 	}
 
@@ -134,12 +154,12 @@ func TestBasic(t *testing.T) {
 	}
 
 	f0 = Float64ToFixed64(999.999)
-	if f0.ToBase10s(2) != "1000.00" {
-		t.Error("should be round to equal ", "1000.00", f0.ToBase10s(2))
+	if f0.ToBase10N(2) != "1000.00" {
+		t.Error("should be round to equal ", "1000.00", f0.ToBase10N(2))
 	}
 
 	if f1.Round() != -1 {
-		t.Error("should be round to equal ", -1, f1.ToBase10s(3), f1.Round())
+		t.Error("should be round to equal ", -1, f1.ToBase10N(3), f1.Round())
 	}
 	f0 = Float64ToFixed64(1)
 	f1 = Float64ToFixed64(.5).Add(Float64ToFixed64(.5))
@@ -153,7 +173,7 @@ func TestBasic(t *testing.T) {
 	}
 
 	f0 = Float64ToFixed64(.999)
-	if f0.ToBase10s(3) != "0.999" {
+	if f0.ToBase10N(3) != "0.999" {
 		t.Error("should be equal", f0, "0.999")
 	}
 
@@ -174,11 +194,11 @@ func TestBasic(t *testing.T) {
 	f0 = Float64ToFixed64(1)
 	f1 = Float64ToFixed64(0.1)
 	f2 = Float64ToFixed64(10)
-	if f0.Div(f1).ToBase10s(3) != f2.ToBase10s(3) {
+	if f0.Div(f1).ToBase10N(3) != f2.ToBase10N(3) {
 		t.Error("should be equal ", f0.Div(f1), f2)
 	}
 
-	if f0.Div(f2).ToBase10s(3) != f1.ToBase10s(3) {
+	if f0.Div(f2).ToBase10N(3) != f1.ToBase10N(3) {
 		t.Error("should be equal ", f0.Div(f2), f1)
 	}
 
@@ -188,6 +208,12 @@ func TestBasic(t *testing.T) {
 
 	if !MaxFixed64.Sub(MaxFixed64).Equal(Fixed64Zero) {
 		t.Error("should be equal  ", MaxFixed64.Sub(MaxFixed64), Fixed64Zero)
+	}
+
+	f0 = Fixed64((1 << 63) - 1)
+	f1 = Fixed64(1 << 20)
+	if !f0.Mul(f1).Equal(f0){
+		t.Error("should be equal ",f0.Mul(f1), f0)
 	}
 }
 
