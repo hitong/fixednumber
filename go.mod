@@ -1,3 +1,3 @@
-module github.com/hitong/FixedNumber
+module github.com/hitong/fixednumber
 
 go 1.15
