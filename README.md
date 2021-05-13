@@ -6,7 +6,7 @@
 
 
 ## Usage
-
+https://play.golang.org/p/iW1rFy0_Y_j
 <pre><code>
 package main
 
